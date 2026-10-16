@@ -1,6 +1,7 @@
 ﻿# 作業を保存して GitHub に送るスクリプト（こまめに実行してOK）
 # 使い方: .\tools\save-work.ps1 "やったこと"
-param([Parameter(Position = 0)][string]$Message = "")
+#         .\tools\save-work.ps1 "やったこと" -NoProjectCheck   … プロジェクトに登録しないファイルを、わざと入れるとき
+param([Parameter(Position = 0)][string]$Message = "", [switch]$NoProjectCheck)
 
 . "$PSScriptRoot\common.ps1"
 Set-Location $RepoRoot
@@ -26,6 +27,33 @@ foreach ($f in (git -c core.quotePath=false diff --cached --name-only --diff-fil
 if ($big.Count -gt 0) {
     git reset -q
     Stop-Team "大きいファイルが LFS の対象になっていません: $($big -join ', ')" "管理者に .gitattributes への追加を頼んでください"
+}
+
+# 新しく追加した C++ / シェーダーのファイルが、Visual Studio のプロジェクト（.vcxproj）に登録されているか
+# （登録されていないと、他の人が取り込んでも Visual Studio に表示されず、ビルドもされない）
+if (-not $NoProjectCheck) {
+    $projects = @(Get-ChildItem $RepoRoot -Filter *.vcxproj -Recurse | Where-Object { $_.FullName -notmatch '\\(\.vs|x64|x86|Debug|Release)\\' })
+    $missing = @()
+    foreach ($f in (git -c core.quotePath=false diff --cached --name-only --diff-filter=A)) {
+        if ($f -notmatch '\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|hlsl|hlsli|fx)$') { continue }
+        $full = Join-Path $RepoRoot ($f -replace '/', '\')
+        $registered = $false
+        foreach ($p in $projects) {
+            # .vcxproj には、.vcxproj のあるフォルダからの相対パスで書かれている（例: Include="src\Player.cpp"）
+            $rel = [Uri]::UnescapeDataString((New-Object Uri ($p.DirectoryName + "\")).MakeRelativeUri((New-Object Uri $full)).ToString()) -replace '/', '\'
+            if (Select-String -LiteralPath $p.FullName -SimpleMatch "Include=`"$rel`"" -Quiet) { $registered = $true; break }
+        }
+        if (-not $registered) { $missing += $f }
+    }
+    if ($projects.Count -gt 0 -and $missing.Count -gt 0) {
+        git reset -q
+        Write-Host "✖ 次のファイルが Visual Studio のプロジェクトに登録されていません:" -ForegroundColor Red
+        $missing | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Write-Host "  → Visual Studio のソリューションエクスプローラーで「ソース ファイル」か「ヘッダー ファイル」を右クリック" -ForegroundColor DarkGray
+        Write-Host "    → 追加 → 既存の項目 で追加し、Ctrl+Shift+S（すべて保存）してから、もう一度実行してください" -ForegroundColor DarkGray
+        Write-Host "  → わざとプロジェクトに入れないファイルなら: .\tools\save-work.ps1 `"$Message`" -NoProjectCheck" -ForegroundColor DarkGray
+        exit 1
+    }
 }
 
 git diff --cached --quiet
