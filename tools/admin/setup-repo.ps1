@@ -29,6 +29,10 @@ $orgRole = gh api "user/memberships/orgs/$Org" --jq ".role" 2>$null
 if ($orgRole -ne "admin") {
     Stop-Team "$me は組織 '$Org' のオーナーではありません（または組織がありません）。" "管理者向けガイドの「2. Organization を作る」を参照"
 }
+if (-not (git config --global user.name) -or -not (git config --global user.email)) {
+    Stop-Team "Git の名前とメールアドレスが設定されていません。" "管理者向けガイドの「1-6. Git の初期設定」を参照"
+}
+git config --global core.autocrlf true
 Write-Ok "$me（$Org のオーナー）として実行します。"
 
 # ---------------------------------------------------------------
@@ -36,6 +40,12 @@ Write-Step "2. チームの設定ファイル（tools/team.json）"
 $cfg = [ordered]@{ org = $Org; repo = $Repo; mainBranch = $MainBranch; developBranch = $DevelopBranch }
 [IO.File]::WriteAllText($ConfigPath, (ConvertTo-Json -InputObject $cfg) + "`n", (New-Object Text.UTF8Encoding $false))
 Write-Ok "$ConfigPath"
+# ガイドの {{ORG}} {{REPO}} を実際の名前に置き換える
+foreach ($md in Get-ChildItem (Join-Path $RepoRoot "docs\team") -Filter *.md -ErrorAction SilentlyContinue) {
+    $text = [IO.File]::ReadAllText($md.FullName)
+    $new = $text.Replace("{{ORG}}", $Org).Replace("{{REPO}}", $Repo)
+    if ($new -ne $text) { [IO.File]::WriteAllText($md.FullName, $new, (New-Object Text.UTF8Encoding $false)); Write-Ok "docs\team\$($md.Name) に組織名・リポジトリ名を書き込みました" }
+}
 
 # ---------------------------------------------------------------
 Write-Step "3. ローカルの git"
@@ -164,7 +174,7 @@ if ($Admins.Count + $Members.Count -eq 0) { Write-Host "  （あとから .\tool
 # ---------------------------------------------------------------
 Write-Step "7. team.json などの設定を develop に入れる"
 Git-Run fetch -q origin
-git add tools/team.json
+git add tools/team.json docs/team
 git diff --cached --quiet
 if ($LASTEXITCODE -ne 0) {
     # develop には直接 push できないので、設定用のブランチを作ってプルリクエストでマージする
@@ -172,8 +182,8 @@ if ($LASTEXITCODE -ne 0) {
     if (-not (Test-Clean)) { git stash push -q -m "setup-repo"; $stash = $true }
     Git-Run switch -q -C "feature/setup-team-config" "origin/$DevelopBranch"
     if ($stash) { git stash pop -q }
-    Git-Run add tools/team.json
-    Git-Run commit -q -m "チームの設定（tools/team.json）を追加"
+    Git-Run add tools/team.json docs/team
+    Git-Run commit -q -m "チームの設定（team.json とガイドの組織名）を更新"
     Git-Run push -q -u origin "feature/setup-team-config"
     $url = gh pr create --head "feature/setup-team-config" --base $DevelopBranch --title "チームの設定を追加" --body "setup-repo.ps1 が作成"
     gh pr merge $url --merge --admin --delete-branch | Out-Null
