@@ -17,7 +17,7 @@ git add -A
 
 # 50MB を超えるファイルが LFS 以外で入ろうとしていないか（GitHub は 100MB 超を拒否する）
 $big = @()
-foreach ($f in (git diff --cached --name-only --diff-filter=AM)) {
+foreach ($f in (git -c core.quotePath=false diff --cached --name-only --diff-filter=AM)) {
     if (-not (Test-Path -LiteralPath $f)) { continue }
     $size = (Get-Item -LiteralPath $f).Length
     $isLfs = (git check-attr filter -- $f) -match "filter: lfs$"
