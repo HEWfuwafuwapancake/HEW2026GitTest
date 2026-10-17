@@ -2,6 +2,7 @@
 # 使い方: .\tools\fetch-latest.ps1
 #   develop にいるとき          … 手元の develop を GitHub の最新にする（フォルダの中身も最新になる）
 #   フィーチャーブランチにいるとき … 手元の develop だけ最新にする（今の作業には混ぜない。混ぜるときは start-work.ps1）
+#   マージ済みのフィーチャーブランチにいるとき … 保存していない変更がなければ develop に切り替えて、古いブランチを片付ける
 
 . "$PSScriptRoot\common.ps1"
 Set-Location $RepoRoot
@@ -15,6 +16,24 @@ if ($LASTEXITCODE -ne 0) { Stop-Team "GitHub に接続できませんでした�
 $after = git rev-parse "origin/$dev"
 
 $current = Get-CurrentBranch
+
+# 今いるフィーチャーブランチが、マージ済みで GitHub から消えている
+# （一度 push してある ＋ GitHub にもうない ＋ 中身が全部 develop に入っている）→ develop に移る
+$finished = $null
+$mergedDirty = $false
+if ($current -like "feature/*" -and (git config "branch.$current.merge") -and -not (Test-RemoteBranch $current) -and (Test-Contains "origin/$dev" HEAD)) {
+    if (Test-Clean) {
+        Write-Step "$current はマージ済みなので、$dev に切り替えます"
+        if (Test-LocalBranch $dev) { Git-Run switch -q $dev } else { Git-Run switch -q --track "origin/$dev"; $before = $null }
+        $finished = $current
+        $current = $dev
+    } else {
+        $mergedDirty = $true
+        Write-Warn "$current はもう $dev にマージ済みですが、保存していない変更があるので切り替えませんでした。"
+        Write-Host "  この変更を続けるなら、新しい作業名で: .\tools\start-work.ps1 <新しい作業名>（変更ごと新しいブランチに移れます）"
+    }
+}
+
 if (-not (Test-LocalBranch $dev)) {
     # 手元に develop がない（クローン直後に別のブランチにいる など）→ 作るだけ
     Git-Run branch --track $dev "origin/$dev"
@@ -53,6 +72,13 @@ if ($before -and $before -ne $after) {
     }
 }
 
+# さっきまでいたマージ済みのブランチを消す（develop を最新にしてからでないと「未マージ」と判定される）
+if ($finished) {
+    git branch -d $finished 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Ok "マージ済みの $finished を片付けました。" }
+    else { Write-Warn "$finished を消せませんでした（git branch -d $finished で理由を確認してください）。" }
+}
+
 # マージ済みで GitHub から消えたフィーチャーブランチ（手元にだけ残っているもの）
 $gone = git for-each-ref --format="%(refname:short)%09%(upstream:track)" refs/heads/feature | Where-Object { $_ -match "\t\[gone\]$" } | ForEach-Object { ($_ -split "`t")[0] }
 if ($gone) {
@@ -67,5 +93,6 @@ if ($current -eq $dev) {
     Write-Host "  作業を始めるとき: .\tools\start-work.ps1 <作業名>"
 } else {
     Write-Ok "手元の $dev を最新にしました（今の $current の中身は変えていません）。"
-    if (-not (Test-Contains HEAD "origin/$dev")) { Write-Host "  今の作業に develop の最新を取り込むとき: .\tools\start-work.ps1" }
+    if ($mergedDirty) { Write-Host "  （このブランチはマージ済みです。続きは .\tools\start-work.ps1 <新しい作業名> で）" }
+    elseif (-not (Test-Contains HEAD "origin/$dev")) { Write-Host "  今の作業に develop の最新を取り込むとき: .\tools\start-work.ps1" }
 }
