@@ -13,11 +13,11 @@
 //	   ここで知っている物体（地形と立方体）だけが水に映る。
 //==============================================================================
 
-// 地形の形（field.cpp と同じ値・同じ式にすること）
-static const float LAKE_RADIUS = 12.0;
-static const float LAKE_BOTTOM = -3.0;
-static const float SHORE_HEIGHT = 0.6;
-static const float TERRAIN_MAX_HEIGHT = 4.5;	// 地形のいちばん高いところより少し上
+// 地形のテクスチャ（field.cpp の CreateTerrainTextures で作り、water.cpp で設定する）
+// 地形の式は field.cpp にだけある。ここでは計算せず、テクスチャから読むだけ
+Texture2D TerrainHeightNormal : register(t1);	// r：高さ、gba：法線
+Texture2D TerrainColorMap : register(t2);		// rgb：地面の色
+SamplerState TerrainSampler : register(s1);		// 端でくり返さないサンプラー
 
 static const float WATER_IOR = 1.33;			// 水の屈折率
 static const float3 WATER_ABSORB = float3(0.45, 0.12, 0.08);	// 水が色を吸う強さ（赤が一番吸われるので青緑に見える）
@@ -31,40 +31,29 @@ static const int   REFRACTION_STEPS = 48;			// 屈折の光線を進める最大
 static const float REFRACTION_MAX_DISTANCE = 12.0;	// 屈折の光線を追う距離（湖の深さは最大でも約3.6）
 
 
-// 地形の高さ（field.cpp の FieldGetHeight と同じ式）
+// ワールドの (x, z) → 地形テクスチャの UV（地形の中心が (0.5, 0.5)）
+float2 TerrainUV(float2 p)
+{
+	return p / FieldSize + 0.5;
+}
+
+// 地形の高さ
+// ※ ループの中で使うので Sample ではなく SampleLevel（ミップマップの段を自分で指定する読み方）を使う
 float TerrainHeight(float2 p)
 {
-	float d = length(p) + 1.2 * sin(p.x * 0.35) * sin(p.y * 0.3);
-
-	float basin = lerp(LAKE_BOTTOM, SHORE_HEIGHT, smoothstep(0.0, 1.0, saturate(d / LAKE_RADIUS)));
-
-	float hillMask = saturate((d - LAKE_RADIUS) / LAKE_RADIUS);
-	float hills = 1.2 * (sin(p.x * 0.15) * cos(p.y * 0.13) + 1.0)
-				+ 0.6 * (sin(p.x * 0.31 + 1.7) * sin(p.y * 0.27 + 0.5) + 1.0);
-
-	return basin + hills * hillMask;
+	return TerrainHeightNormal.SampleLevel(TerrainSampler, TerrainUV(p), 0).r;
 }
 
-// 地形の色（field.cpp の FieldGetColor と同じ式）
-float3 TerrainColor(float height)
-{
-	const float3 sand = float3(0.78, 0.72, 0.52);
-	const float3 grass = float3(0.30, 0.62, 0.25);
-	const float3 darkGrass = float3(0.20, 0.45, 0.18);
-
-	float t1 = saturate((height - 0.5) / 0.6);
-	float t2 = saturate((height - 2.5) / 1.5);
-	return lerp(lerp(sand, grass, t1), darkGrass, t2);
-}
-
-// 地形の法線（まわりの高さの差から求める）
+// 地形の法線
 float3 TerrainNormal(float2 p)
 {
-	const float e = 0.1;
-	return normalize(float3(
-		TerrainHeight(p - float2(e, 0.0)) - TerrainHeight(p + float2(e, 0.0)),
-		2.0 * e,
-		TerrainHeight(p - float2(0.0, e)) - TerrainHeight(p + float2(0.0, e))));
+	return normalize(TerrainHeightNormal.SampleLevel(TerrainSampler, TerrainUV(p), 0).gba);
+}
+
+// 地形の色
+float3 TerrainColor(float2 p)
+{
+	return TerrainColorMap.SampleLevel(TerrainSampler, TerrainUV(p), 0).rgb;
 }
 
 // ライトの当たり方（ふつうの3Dの頂点シェーダーと同じ計算）
@@ -98,7 +87,7 @@ bool TraceTerrain(float3 origin, float3 dir, float maxDistance, int maxSteps, ou
 		if (aboveGround < 0.0) { hit = true; break; }
 
 		// 上に向かう光線が地形より高く出たら、もう当たらない
-		if (dir.y > 0.0 && p.y > TERRAIN_MAX_HEIGHT) break;
+		if (dir.y > 0.0 && p.y > FieldMaxHeight + 0.1) break;
 
 		prevT = t;
 		t += max(0.05, aboveGround * 0.4);	// 地面から離れているほど大きく進む
@@ -174,7 +163,7 @@ float3 TraceReflection(float3 origin, float3 dir)
 	else if (hitTerrain)
 	{
 		float3 p = origin + dir * terrainT;
-		color = Shade(TerrainColor(p.y), TerrainNormal(p.xz));
+		color = Shade(TerrainColor(p.xz), TerrainNormal(p.xz));
 	}
 	return color;
 }
@@ -187,7 +176,7 @@ float3 TraceRefraction(float3 origin, float3 dir)
 	if (TraceTerrain(origin, dir, REFRACTION_MAX_DISTANCE, REFRACTION_STEPS, t))
 	{
 		float3 p = origin + dir * t;
-		float3 bottom = Shade(TerrainColor(p.y), TerrainNormal(p.xz)) * 0.8;
+		float3 bottom = Shade(TerrainColor(p.xz), TerrainNormal(p.xz)) * 0.8;
 		float3 absorb = exp(-WATER_ABSORB * t);	// 進んだ距離が長いほど色が吸われる
 		color = bottom * absorb + WATER_DEEP_COLOR * (1.0 - absorb);
 	}

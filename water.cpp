@@ -63,7 +63,11 @@ void WaterDraw(void)
 	// 水用のシェーダーに切り替えて、レイトレーシングに使う情報を渡す
 	Shader_BeginWater();
 	Shader_SetWorldMatrix(XMMatrixIdentity());
-	Shader_SetWater(CameraGetPosition(), g_Time, CubeGetWorldMatrix(), CubeGetColor());
+	Shader_SetWater(CameraGetPosition(), g_Time, CubeGetWorldMatrix(), CubeGetColor(), FieldGetSize(), FieldGetMaxHeight());
+
+	// 地形のテクスチャ（高さ・法線と色）を t1・t2 に設定する（光線と地形の当たり判定に使う）
+	ID3D11ShaderResourceView* terrain[] = { FieldGetHeightNormalTexture(), FieldGetColorTexture() };
+	DirectXGetDeviceContext()->PSSetShaderResources(1, ARRAYSIZE(terrain), terrain);
 
 	// 頂点バッファを描画パイプラインに設定
 	UINT stride = sizeof(VERTEX_3D);

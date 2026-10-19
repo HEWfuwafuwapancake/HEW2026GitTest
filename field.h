@@ -13,9 +13,15 @@ void FieldUpdate(void);
 void FieldDraw(void);
 
 // 地形の高さ（x, z の位置の地面の y）
-// ※ 水のシェーダー（shaderPixelWater.hlsl の TerrainHeight）にも同じ式がある。変えるときは両方そろえること
+// ※ 地形の式はここ（field.cpp）だけ。水のシェーダーには、この式で作ったテクスチャを渡している
 float FieldGetHeight(float x, float z);
 
 // 高さに応じた地面の色（砂浜 → 草 → 濃い草）
-// ※ shaderPixelWater.hlsl の TerrainColor と同じ式
 XMFLOAT3 FieldGetColor(float height);
+
+// 水のシェーダーに渡す地形の情報
+// テクスチャは地形全体（FieldGetSize() 四方）を覆う。地形の中心が UV (0.5, 0.5)
+ID3D11ShaderResourceView* FieldGetHeightNormalTexture(void);	// r：高さ、gba：法線
+ID3D11ShaderResourceView* FieldGetColorTexture(void);			// rgb：地面の色
+float FieldGetSize(void);		// 地形の1辺の長さ
+float FieldGetMaxHeight(void);	// 地形のいちばん高いところの高さ
