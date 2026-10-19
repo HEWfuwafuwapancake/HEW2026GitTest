@@ -23,7 +23,7 @@ GitHub の Organization 上の public リポジトリで、git-flow（main / dev
 - C++（`.cpp` / `.h`）は **BOM付きUTF-8**。シェーダー（`.hlsl` / `.hlsli`）は **BOMなしUTF-8**（fxc は BOM があると `X3000` で失敗する）。
 - 文字セットは **マルチバイト**（ひな形が `char` 文字列のため）。`/utf-8` オプションは付けない。サブシステムは Windows。
 - 定数バッファは `shader.h` / `shader.cpp` の構造体と `shaderCommon.hlsli`（b0〜b4）・`shaderWater.hlsli`（b5）の並び・番号をそろえる。
-- 地形の式（高さ・色）は `field.cpp` と `shaderPixelWater.hlsl` の両方にある。変えるときは両方そろえる。
+- 地形の式（高さ・法線・色）は `field.cpp` にだけある。水のシェーダーには、起動時にその式で作ったテクスチャ（t1：高さ・法線、t2：色）を渡している。地形を変えるときは `field.cpp` だけ直せばよい。
 - ファイルを足したら `.vcxproj` と `.vcxproj.filters` にも追加する。
 - ビルド確認：
   `& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" HEW2026GitTest.vcxproj /p:Configuration=Debug /p:Platform=x64 /v:minimal /nologo`

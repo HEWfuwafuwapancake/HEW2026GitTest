@@ -7,12 +7,18 @@
 static ID3D11Buffer* g_pVertexBuffer = nullptr;	// 頂点バッファ
 static ID3D11Buffer* g_pIndexBuffer = nullptr;	// インデックスバッファ
 
+// 水のシェーダーに渡す地形のテクスチャ（水はこれを使って、地形への光線の当たり判定をする）
+static ID3D11ShaderResourceView* g_pHeightNormalTexture = nullptr;	// r：高さ、gba：法線
+static ID3D11ShaderResourceView* g_pColorTexture = nullptr;			// rgb：地面の色
+static float g_MaxHeight = 0.0f;									// 地形のいちばん高いところ
+
 static constexpr float FIELD_SIZE = 100.0f;		// 1辺の長さ
 static constexpr int   FIELD_DIVISION = 200;	// 1辺を何マスに分けるか（細かいほどなめらか）
 static constexpr int   VERTEX_COUNT = (FIELD_DIVISION + 1) * (FIELD_DIVISION + 1);
 static constexpr int   INDEX_COUNT = FIELD_DIVISION * FIELD_DIVISION * 6;
+static constexpr int   TEXTURE_SIZE = 512;		// 地形テクスチャの1辺のピクセル数（1ピクセル ≒ 0.2）
 
-// 地形の形（shaderPixelWater.hlsl と同じ値にすること）
+// 地形の形
 static constexpr float LAKE_RADIUS = 12.0f;			// 湖の半径
 static constexpr float LAKE_BOTTOM = -3.0f;			// 湖のいちばん深いところの高さ
 static constexpr float SHORE_HEIGHT = 0.6f;			// 岸の高さ
@@ -66,6 +72,100 @@ XMFLOAT3 FieldGetColor(float height)
 	return c;
 }
 
+// 地形の法線（まわりの高さの差から傾きを求める）
+static XMFLOAT3 FieldGetNormal(float x, float z)
+{
+	const float e = 0.1f;	// 前後左右どれだけずらして高さを比べるか
+	XMVECTOR n = XMVectorSet(
+		FieldGetHeight(x - e, z) - FieldGetHeight(x + e, z),
+		2.0f * e,
+		FieldGetHeight(x, z - e) - FieldGetHeight(x, z + e),
+		0.0f);
+	XMFLOAT3 normal;
+	XMStoreFloat3(&normal, XMVector3Normalize(n));
+	return normal;
+}
+
+// テクスチャを作って、シェーダーから読めるようにする（ビューだけ残して、テクスチャ本体は手放す）
+static ID3D11ShaderResourceView* CreateTexture(DXGI_FORMAT format, const void* data, UINT rowBytes)
+{
+	D3D11_TEXTURE2D_DESC td{};
+	td.Width = TEXTURE_SIZE;
+	td.Height = TEXTURE_SIZE;
+	td.MipLevels = 1;
+	td.ArraySize = 1;
+	td.Format = format;
+	td.SampleDesc.Count = 1;
+	td.Usage = D3D11_USAGE_IMMUTABLE;	// 作ったあと中身を変えない
+	td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA sd{};
+	sd.pSysMem = data;
+	sd.SysMemPitch = rowBytes;	// 1行のバイト数
+
+	ID3D11Texture2D* texture = nullptr;
+	ID3D11ShaderResourceView* view = nullptr;
+	if (SUCCEEDED(DirectXGetDevice()->CreateTexture2D(&td, &sd, &texture))) {
+		DirectXGetDevice()->CreateShaderResourceView(texture, nullptr, &view);
+		texture->Release();	// ビューがテクスチャを持っているので、ここでは手放してよい
+	}
+	return view;
+}
+
+// 水のシェーダー用に、地形の高さ・法線・色をテクスチャにする
+// テクスチャの (i, j) ピクセルの真ん中が、ワールドの (x, z) に当たる
+static void CreateTerrainTextures(void)
+{
+	std::vector<XMFLOAT4> heightNormal(TEXTURE_SIZE * TEXTURE_SIZE);
+	std::vector<UINT> color(TEXTURE_SIZE * TEXTURE_SIZE);
+
+	const float half = FIELD_SIZE * 0.5f;
+	const float step = FIELD_SIZE / TEXTURE_SIZE;
+	g_MaxHeight = -1000.0f;
+
+	for (int j = 0; j < TEXTURE_SIZE; j++) {
+		for (int i = 0; i < TEXTURE_SIZE; i++) {
+			float x = -half + (i + 0.5f) * step;
+			float z = -half + (j + 0.5f) * step;
+			float y = FieldGetHeight(x, z);
+			XMFLOAT3 n = FieldGetNormal(x, z);
+			XMFLOAT3 c = FieldGetColor(y);
+
+			heightNormal[j * TEXTURE_SIZE + i] = { y, n.x, n.y, n.z };
+			// R8G8B8A8 は 1ピクセル4バイト（下位バイトから R, G, B, A）
+			color[j * TEXTURE_SIZE + i] = (UINT)(c.x * 255.0f + 0.5f)
+				| ((UINT)(c.y * 255.0f + 0.5f) << 8)
+				| ((UINT)(c.z * 255.0f + 0.5f) << 16)
+				| (255u << 24);
+
+			if (y > g_MaxHeight) g_MaxHeight = y;
+		}
+	}
+
+	g_pHeightNormalTexture = CreateTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, heightNormal.data(), TEXTURE_SIZE * sizeof(XMFLOAT4));
+	g_pColorTexture = CreateTexture(DXGI_FORMAT_R8G8B8A8_UNORM, color.data(), TEXTURE_SIZE * sizeof(UINT));
+}
+
+ID3D11ShaderResourceView* FieldGetHeightNormalTexture(void)
+{
+	return g_pHeightNormalTexture;
+}
+
+ID3D11ShaderResourceView* FieldGetColorTexture(void)
+{
+	return g_pColorTexture;
+}
+
+float FieldGetSize(void)
+{
+	return FIELD_SIZE;
+}
+
+float FieldGetMaxHeight(void)
+{
+	return g_MaxHeight;
+}
+
 
 void FieldInitialize(void)
 {
@@ -74,7 +174,6 @@ void FieldInitialize(void)
 
 	const float half = FIELD_SIZE * 0.5f;
 	const float step = FIELD_SIZE / FIELD_DIVISION;
-	const float e = 0.1f;	// 法線を求めるときに、前後左右どれだけずらして高さを比べるか
 
 	// 頂点：x 方向に i、z 方向に j 番目
 	for (int j = 0; j <= FIELD_DIVISION; j++) {
@@ -85,14 +184,7 @@ void FieldInitialize(void)
 
 			VERTEX_3D& v = vertex[j * (FIELD_DIVISION + 1) + i];
 			v.Position = { x, y, z };
-
-			// 法線：まわりの高さの差から傾きを求める
-			XMVECTOR n = XMVectorSet(
-				FieldGetHeight(x - e, z) - FieldGetHeight(x + e, z),
-				2.0f * e,
-				FieldGetHeight(x, z - e) - FieldGetHeight(x, z + e),
-				0.0f);
-			XMStoreFloat3(&v.Normal, XMVector3Normalize(n));
+			v.Normal = FieldGetNormal(x, z);	// 法線：まわりの高さの差から傾きを求める
 
 			XMFLOAT3 color = FieldGetColor(y);
 			v.Diffuse = { color.x, color.y, color.z, 1.0f };
@@ -130,10 +222,15 @@ void FieldInitialize(void)
 
 	sd.pSysMem = index.data();
 	DirectXGetDevice()->CreateBuffer(&bd, &sd, &g_pIndexBuffer);
+
+	// 水のシェーダー用のテクスチャ
+	CreateTerrainTextures();
 }
 
 void FieldFinalize(void)
 {
+	SAFE_RELEASE(g_pColorTexture);
+	SAFE_RELEASE(g_pHeightNormalTexture);
 	SAFE_RELEASE(g_pIndexBuffer);
 	SAFE_RELEASE(g_pVertexBuffer);
 }

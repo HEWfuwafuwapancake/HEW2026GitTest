@@ -16,7 +16,8 @@
 static ID3D11VertexShader* g_pVertexShader = nullptr;
 static ID3D11InputLayout* g_pInputLayout = nullptr;
 static ID3D11PixelShader* g_pPixelShader = nullptr;
-static ID3D11SamplerState* g_SamplerState = nullptr;
+static ID3D11SamplerState* g_SamplerState = nullptr;		// s0：ふつうのテクスチャ用（端でくり返す）
+static ID3D11SamplerState* g_ClampSamplerState = nullptr;	// s1：地形テクスチャ用（端でくり返さない）
 static ID3D11VertexShader* g_pWaterVertexShader = nullptr;	// 水用
 static ID3D11PixelShader* g_pWaterPixelShader = nullptr;	// 水用（レイトレーシング）
 
@@ -35,6 +36,9 @@ struct WATER
 	float      Time;
 	XMFLOAT4X4 CubeInvWorld;	// 立方体のワールド行列の逆行列（転置して入れる）
 	XMFLOAT4   CubeColor;
+	float      FieldSize;		// 地形の1辺の長さ（地形テクスチャの UV を求める）
+	float      FieldMaxHeight;	// 地形のいちばん高いところ（上に向かう光線を早めに打ち切る）
+	float      Dummy[2];
 };
 
 // 注意！初期化で外部から設定されるもの。Release不要。
@@ -197,13 +201,22 @@ bool Shader_Initialize(ID3D11Device* pDevice, ID3D11DeviceContext* pContext)
 
 	g_pDevice->CreateSamplerState(&samplerDesc, &g_SamplerState);
 
-	g_pContext->PSSetSamplers(0, 1, &g_SamplerState);
+	// 地形テクスチャ用：端より外を読んだら端の値を使う（くり返すと、反対側の端の地形が映ってしまう）
+	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	g_pDevice->CreateSamplerState(&samplerDesc, &g_ClampSamplerState);
+
+	ID3D11SamplerState* samplers[] = { g_SamplerState, g_ClampSamplerState };
+	g_pContext->PSSetSamplers(0, ARRAYSIZE(samplers), samplers);
 
 	return true;
 }
 
 void Shader_Finalize()
 {
+	SAFE_RELEASE(g_ClampSamplerState);
 	SAFE_RELEASE(g_SamplerState);
 	SAFE_RELEASE(g_pWaterBuffer);
 	SAFE_RELEASE(g_pWaterPixelShader);
@@ -252,13 +265,16 @@ void Shader_SetLight(const LIGHT& light)
 	g_pContext->UpdateSubresource(g_pLightBuffer, 0, nullptr, &light, 0, 0);
 }
 
-void Shader_SetWater(const XMFLOAT3& cameraPosition, float time, const XMMATRIX& cubeWorld, const XMFLOAT4& cubeColor)
+void Shader_SetWater(const XMFLOAT3& cameraPosition, float time, const XMMATRIX& cubeWorld, const XMFLOAT4& cubeColor,
+	float fieldSize, float fieldMaxHeight)
 {
 	WATER water{};
 	water.CameraPosition = cameraPosition;
 	water.Time = time;
 	XMStoreFloat4x4(&water.CubeInvWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, cubeWorld)));
 	water.CubeColor = cubeColor;
+	water.FieldSize = fieldSize;
+	water.FieldMaxHeight = fieldMaxHeight;
 	g_pContext->UpdateSubresource(g_pWaterBuffer, 0, nullptr, &water, 0, 0);
 }
 

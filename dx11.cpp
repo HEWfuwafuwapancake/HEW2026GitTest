@@ -16,6 +16,11 @@ static ID3D11BlendState* g_BlendState = NULL;
 static ID3D11DepthStencilState* g_DepthStencilStateDepthEnable = NULL;	// 3D用（深度テストあり）
 static ID3D11DepthStencilState* g_DepthStencilStateDepthDisable = NULL;	// 2D用（深度テストなし）
 
+// 垂直同期：モニターが画面を書き換えるタイミングに合わせて表示する
+// true にすると画面のちらつき（上下で絵がずれる「ティアリング」）が出ない。
+// FPS が 60 を大きく下回る PC で、さらにカクつくようなら false にして試す
+static constexpr bool VSYNC = true;
+
 
 bool DirectXInitialize(HWND hWnd)
 {
@@ -233,6 +238,6 @@ void Clear(void)
 //=============================================================================
 void Present(void)
 {
-	// バックバッファとフロントバッファの交換
-	g_SwapChain->Present(0, 0);
+	// バックバッファとフロントバッファの交換（垂直同期ありなら、モニターの書き換えを待ってから）
+	g_SwapChain->Present(VSYNC ? 1 : 0, 0);
 }
