@@ -42,4 +42,8 @@ void Shader_Set2DMatrix();	// 2D描画用（左上が原点・ピクセル単位
 void Shader_SetMaterial(const MATERIAL& material);
 void Shader_SetLight(const LIGHT& light);
 
-void Shader_Begin();
+// 水のレイトレーシングに使う情報（カメラの位置・経過時間・水に映す立方体）
+void Shader_SetWater(const XMFLOAT3& cameraPosition, float time, const XMMATRIX& cubeWorld, const XMFLOAT4& cubeColor);
+
+void Shader_Begin();		// ふつうの3D／2D用のシェーダーに切り替える
+void Shader_BeginWater();	// 水用のシェーダーに切り替える（描き終わったら Shader_Begin で戻す）

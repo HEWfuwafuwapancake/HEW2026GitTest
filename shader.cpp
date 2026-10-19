@@ -17,13 +17,25 @@ static ID3D11VertexShader* g_pVertexShader = nullptr;
 static ID3D11InputLayout* g_pInputLayout = nullptr;
 static ID3D11PixelShader* g_pPixelShader = nullptr;
 static ID3D11SamplerState* g_SamplerState = nullptr;
+static ID3D11VertexShader* g_pWaterVertexShader = nullptr;	// 水用
+static ID3D11PixelShader* g_pWaterPixelShader = nullptr;	// 水用（レイトレーシング）
 
-// 定数バッファ（番号は shaderCommon.hlsli の register(b0)〜(b4) と合わせる）
+// 定数バッファ（番号は shaderCommon.hlsli / shaderWater.hlsli の register(b0)〜(b5) と合わせる）
 static ID3D11Buffer* g_pWorldBuffer = nullptr;		// b0
 static ID3D11Buffer* g_pViewBuffer = nullptr;		// b1
 static ID3D11Buffer* g_pProjectionBuffer = nullptr;	// b2
 static ID3D11Buffer* g_pMaterialBuffer = nullptr;	// b3
 static ID3D11Buffer* g_pLightBuffer = nullptr;		// b4
+static ID3D11Buffer* g_pWaterBuffer = nullptr;		// b5
+
+// 水用の定数バッファ（shaderWater.hlsli の WaterBuffer と並びを合わせる）
+struct WATER
+{
+	XMFLOAT3   CameraPosition;
+	float      Time;
+	XMFLOAT4X4 CubeInvWorld;	// 立方体のワールド行列の逆行列（転置して入れる）
+	XMFLOAT4   CubeColor;
+};
 
 // 注意！初期化で外部から設定されるもの。Release不要。
 static ID3D11Device* g_pDevice = nullptr;
@@ -131,13 +143,28 @@ bool Shader_Initialize(ID3D11Device* pDevice, ID3D11DeviceContext* pContext)
 	}
 
 
+	// 水用シェーダーの読み込み（頂点の形はふつうの3Dと同じなので、頂点レイアウトは共通）
+	std::vector<unsigned char> binary;
+	if (!LoadShaderFile("shaderVertexWater.cso", binary) ||
+		FAILED(g_pDevice->CreateVertexShader(binary.data(), binary.size(), nullptr, &g_pWaterVertexShader))) {
+		MessageBox(nullptr, "水の頂点シェーダーの読み込みに失敗しました\n\nshaderVertexWater.cso", "エラー", MB_OK);
+		return false;
+	}
+	if (!LoadShaderFile("shaderPixelWater.cso", binary) ||
+		FAILED(g_pDevice->CreatePixelShader(binary.data(), binary.size(), nullptr, &g_pWaterPixelShader))) {
+		MessageBox(nullptr, "水のピクセルシェーダーの読み込みに失敗しました\n\nshaderPixelWater.cso", "エラー", MB_OK);
+		return false;
+	}
+
+
 	// 定数バッファの作成
 	g_pWorldBuffer = CreateConstantBuffer(sizeof(XMFLOAT4X4));
 	g_pViewBuffer = CreateConstantBuffer(sizeof(XMFLOAT4X4));
 	g_pProjectionBuffer = CreateConstantBuffer(sizeof(XMFLOAT4X4));
 	g_pMaterialBuffer = CreateConstantBuffer(sizeof(MATERIAL));
 	g_pLightBuffer = CreateConstantBuffer(sizeof(LIGHT));
-	if (!g_pWorldBuffer || !g_pViewBuffer || !g_pProjectionBuffer || !g_pMaterialBuffer || !g_pLightBuffer) {
+	g_pWaterBuffer = CreateConstantBuffer(sizeof(WATER));
+	if (!g_pWorldBuffer || !g_pViewBuffer || !g_pProjectionBuffer || !g_pMaterialBuffer || !g_pLightBuffer || !g_pWaterBuffer) {
 		hal::dout << "Shader_Initialize() : 定数バッファの作成に失敗しました" << std::endl;
 		return false;
 	}
@@ -178,6 +205,9 @@ bool Shader_Initialize(ID3D11Device* pDevice, ID3D11DeviceContext* pContext)
 void Shader_Finalize()
 {
 	SAFE_RELEASE(g_SamplerState);
+	SAFE_RELEASE(g_pWaterBuffer);
+	SAFE_RELEASE(g_pWaterPixelShader);
+	SAFE_RELEASE(g_pWaterVertexShader);
 	SAFE_RELEASE(g_pLightBuffer);
 	SAFE_RELEASE(g_pMaterialBuffer);
 	SAFE_RELEASE(g_pProjectionBuffer);
@@ -222,6 +252,16 @@ void Shader_SetLight(const LIGHT& light)
 	g_pContext->UpdateSubresource(g_pLightBuffer, 0, nullptr, &light, 0, 0);
 }
 
+void Shader_SetWater(const XMFLOAT3& cameraPosition, float time, const XMMATRIX& cubeWorld, const XMFLOAT4& cubeColor)
+{
+	WATER water{};
+	water.CameraPosition = cameraPosition;
+	water.Time = time;
+	XMStoreFloat4x4(&water.CubeInvWorld, XMMatrixTranspose(XMMatrixInverse(nullptr, cubeWorld)));
+	water.CubeColor = cubeColor;
+	g_pContext->UpdateSubresource(g_pWaterBuffer, 0, nullptr, &water, 0, 0);
+}
+
 void Shader_Begin()
 {
 	// 頂点シェーダーとピクセルシェーダーを描画パイプラインに設定
@@ -231,8 +271,15 @@ void Shader_Begin()
 	// 頂点レイアウトを描画パイプラインに設定
 	g_pContext->IASetInputLayout(g_pInputLayout);
 
-	// 定数バッファを描画パイプラインに設定（b0〜b4。頂点・ピクセルの両方から見えるようにする）
-	ID3D11Buffer* buffers[] = { g_pWorldBuffer, g_pViewBuffer, g_pProjectionBuffer, g_pMaterialBuffer, g_pLightBuffer };
+	// 定数バッファを描画パイプラインに設定（b0〜b5。頂点・ピクセルの両方から見えるようにする）
+	ID3D11Buffer* buffers[] = { g_pWorldBuffer, g_pViewBuffer, g_pProjectionBuffer, g_pMaterialBuffer, g_pLightBuffer, g_pWaterBuffer };
 	g_pContext->VSSetConstantBuffers(0, ARRAYSIZE(buffers), buffers);
 	g_pContext->PSSetConstantBuffers(0, ARRAYSIZE(buffers), buffers);
+}
+
+void Shader_BeginWater()
+{
+	// 頂点レイアウトと定数バッファは Shader_Begin で設定したものをそのまま使う
+	g_pContext->VSSetShader(g_pWaterVertexShader, nullptr, 0);
+	g_pContext->PSSetShader(g_pWaterPixelShader, nullptr, 0);
 }

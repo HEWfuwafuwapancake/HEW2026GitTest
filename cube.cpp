@@ -13,6 +13,7 @@ static constexpr int INDEX_COUNT = FACE_COUNT * 6;	// 1面 = 三角形2枚 = 6�
 static XMFLOAT3 g_Position = { 0.0f, 1.5f, 0.0f };	// 位置
 static XMFLOAT3 g_Rotation = { 0.0f, 0.0f, 0.0f };	// 回転（ラジアン）
 static XMFLOAT3 g_Scale = { 1.0f, 1.0f, 1.0f };		// 大きさ
+static XMFLOAT4 g_Color = { 1.0f, 0.6f, 0.2f, 1.0f };	// 色（オレンジ）
 
 
 void CubeInitialize(void)
@@ -91,18 +92,27 @@ void CubeUpdate(void)
 	g_Rotation.y += XMConvertToRadians(1.0f);
 }
 
-void CubeDraw(void)
+XMMATRIX CubeGetWorldMatrix(void)
 {
 	// ワールド行列（拡大縮小 → 回転 → 移動 の順に掛ける）
-	XMMATRIX world = XMMatrixScaling(g_Scale.x, g_Scale.y, g_Scale.z)
+	return XMMatrixScaling(g_Scale.x, g_Scale.y, g_Scale.z)
 		* XMMatrixRotationRollPitchYaw(g_Rotation.x, g_Rotation.y, g_Rotation.z)
 		* XMMatrixTranslation(g_Position.x, g_Position.y, g_Position.z);
-	Shader_SetWorldMatrix(world);
+}
 
-	// マテリアル（オレンジ色）
+XMFLOAT4 CubeGetColor(void)
+{
+	return g_Color;
+}
+
+void CubeDraw(void)
+{
+	Shader_SetWorldMatrix(CubeGetWorldMatrix());
+
+	// マテリアル
 	MATERIAL material{};
-	material.Diffuse = { 1.0f, 0.6f, 0.2f, 1.0f };
-	material.Ambient = { 1.0f, 0.6f, 0.2f, 1.0f };
+	material.Diffuse = g_Color;
+	material.Ambient = g_Color;
 	Shader_SetMaterial(material);
 
 	// 頂点バッファとインデックスバッファを描画パイプラインに設定
