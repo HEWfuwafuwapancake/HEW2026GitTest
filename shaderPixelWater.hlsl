@@ -23,6 +23,13 @@ static const float WATER_IOR = 1.33;			// 水の屈折率
 static const float3 WATER_ABSORB = float3(0.45, 0.12, 0.08);	// 水が色を吸う強さ（赤が一番吸われるので青緑に見える）
 static const float3 WATER_DEEP_COLOR = float3(0.02, 0.12, 0.16);	// 深いところの水の色
 
+// 軽くするための設定（光線を飛ばす回数・距離を必要なぶんだけにする）
+static const float REFLECTION_MIN_FRESNEL = 0.04;	// 反射がこれより弱いとき（真上近くから見たとき）は、反射の光線を飛ばさず空の色で代わりにする
+static const float REFRACTION_MAX_FRESNEL = 0.97;	// 反射がこれより強いとき（真横近くから見たとき）は、屈折の光線を飛ばさない
+static const int   REFLECTION_STEPS = 96;			// 反射の光線を進める最大回数
+static const int   REFRACTION_STEPS = 48;			// 屈折の光線を進める最大回数（水の中は短い距離で湖底に当たる）
+static const float REFRACTION_MAX_DISTANCE = 12.0;	// 屈折の光線を追う距離（湖の深さは最大でも約3.6）
+
 
 // 地形の高さ（field.cpp の FieldGetHeight と同じ式）
 float TerrainHeight(float2 p)
@@ -75,14 +82,14 @@ float3 SkyColor(float3 dir)
 
 
 // 光線と地形の当たり判定（レイマーチング：少しずつ進めて、地面の下に入ったところを探す）
-bool TraceTerrain(float3 origin, float3 dir, float maxDistance, out float hitDistance)
+bool TraceTerrain(float3 origin, float3 dir, float maxDistance, int maxSteps, out float hitDistance)
 {
 	bool hit = false;
 	float t = 0.02;
 	float prevT = 0.0;
 
 	[loop]
-	for (int i = 0; i < 96; i++)
+	for (int i = 0; i < maxSteps; i++)
 	{
 		float3 p = origin + dir * t;
 		float aboveGround = p.y - TerrainHeight(p.xz);
@@ -141,6 +148,13 @@ bool TraceCube(float3 origin, float3 dir, out float hitDistance, out float3 hitN
 	return hit;
 }
 
+// 空と太陽のきらめき（光の向きと反射の向きがそろうと明るく光る）
+float3 SkyAndSun(float3 dir)
+{
+	float sun = pow(saturate(dot(dir, -normalize(Light.Direction.xyz))), 400.0);
+	return SkyColor(dir) + Light.Diffuse.rgb * sun * 4.0;
+}
+
 // 反射の光線が見るもの（いちばん近くに当たった物の色。何にも当たらなければ空と太陽）
 float3 TraceReflection(float3 origin, float3 dir)
 {
@@ -148,11 +162,10 @@ float3 TraceReflection(float3 origin, float3 dir)
 	float terrainT = 0.0;
 	float3 cubeNormal = float3(0.0, 1.0, 0.0);
 	bool hitCube = TraceCube(origin, dir, cubeT, cubeNormal);
-	bool hitTerrain = TraceTerrain(origin, dir, 80.0, terrainT);
+	bool hitTerrain = TraceTerrain(origin, dir, 80.0, REFLECTION_STEPS, terrainT);
 
-	// 何にも当たらなければ空。太陽のきらめき（光の向きと反射の向きがそろうと明るく光る）も足す
-	float sun = pow(saturate(dot(dir, -normalize(Light.Direction.xyz))), 400.0);
-	float3 color = SkyColor(dir) + Light.Diffuse.rgb * sun * 4.0;
+	// 何にも当たらなければ空
+	float3 color = SkyAndSun(dir);
 
 	if (hitCube && (!hitTerrain || cubeT < terrainT))
 	{
@@ -171,7 +184,7 @@ float3 TraceRefraction(float3 origin, float3 dir)
 {
 	float3 color = WATER_DEEP_COLOR;
 	float t = 0.0;
-	if (TraceTerrain(origin, dir, 30.0, t))
+	if (TraceTerrain(origin, dir, REFRACTION_MAX_DISTANCE, REFRACTION_STEPS, t))
 	{
 		float3 p = origin + dir * t;
 		float3 bottom = Shade(TerrainColor(p.y), TerrainNormal(p.xz)) * 0.8;
@@ -211,19 +224,29 @@ float4 main(WATER_PS_IN input) : SV_TARGET
 	float3 view = normalize(p - CameraPosition);	// カメラからこのピクセルへ向かう光線
 	float3 normal = WaveNormal(p.xz, Time);
 
+	// フレネル（シュリックの近似）：浅い角度で見るほど反射が強くなる
+	// 先に求めておいて、ほとんど見えない方の光線は飛ばさない（いちばん重いのが光線の計算なので）
+	float cosTheta = saturate(dot(-view, normal));
+	float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+
 	// 反射（波で下向きに跳ね返らないよう、少しだけ上向きにする）
 	float3 reflectDir = reflect(view, normal);
 	reflectDir.y = max(reflectDir.y, 0.01);
 	reflectDir = normalize(reflectDir);
-	float3 reflection = TraceReflection(p + float3(0.0, 0.01, 0.0), reflectDir);
+	float3 reflection;
+	[branch]
+	if (fresnel > REFLECTION_MIN_FRESNEL)
+		reflection = TraceReflection(p + float3(0.0, 0.01, 0.0), reflectDir);
+	else
+		reflection = SkyAndSun(reflectDir);	// 反射は数%しか効かないので、空の色で代わりにする
 
 	// 屈折
-	float3 refractDir = refract(view, normal, 1.0 / WATER_IOR);
-	float3 refraction = TraceRefraction(p, refractDir);
-
-	// フレネル（シュリックの近似）：浅い角度で見るほど反射が強くなる
-	float cosTheta = saturate(dot(-view, normal));
-	float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+	float3 refraction;
+	[branch]
+	if (fresnel < REFRACTION_MAX_FRESNEL)
+		refraction = TraceRefraction(p, refract(view, normal, 1.0 / WATER_IOR));
+	else
+		refraction = WATER_DEEP_COLOR;		// 屈折は数%しか効かないので、深い水の色で代わりにする
 
 	return float4(lerp(refraction, reflection, fresnel), 1.0);
 }

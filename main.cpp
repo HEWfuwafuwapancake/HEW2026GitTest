@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <mmsystem.h>
+#include <stdio.h>
 #include "dx11.h"
 #include "main.h"
 #include "shader.h"
@@ -88,31 +89,58 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 	dwExecLastTime = dwFPSLastTime = timeGetTime();	// システム時刻をミリ秒単位で取得
 	dwCurrentTime = dwFrameCount = 0;
 
+	// 1フレームの長さ（ミリ秒）。17・17・16 を繰り返すと、3フレームで50ミリ秒＝ちょうど1秒に60回になる
+	const DWORD FRAME_TIME[3] = { 17, 17, 16 };
+	int frameIndex = 0;
+
 	/* メッセージループ */
 	MSG msg{};	// 最初の判定で中身が未設定にならないよう0で初期化
 	do {
-		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) { // ウィンドウメッセージが来ていたら
+		// 来ているウィンドウメッセージを全部処理する
+		// （1回に1つずつだと、マウスの移動（WM_INPUT）がたくさん来たときにフレームが遅れる）
+		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				break;
+			}
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		else {
-			dwCurrentTime = timeGetTime();				// システム時刻を取得
+		if (msg.message == WM_QUIT) {
+			break;
+		}
 
-			if ((dwCurrentTime - dwFPSLastTime) >= 1000)	// 1秒ごとに実行
-			{
-				dwFPSLastTime = dwCurrentTime;				// FPSを測定した時刻を保存
-				dwFrameCount = 0;							// カウントをクリア
+		dwCurrentTime = timeGetTime();				// システム時刻を取得
+
+		if ((dwCurrentTime - dwFPSLastTime) >= 1000)	// 1秒ごとに実行
+		{
+			// FPS（1秒間に何回 Update・Draw したか）をタイトルバーに表示する
+			char title[64];
+			DWORD elapsed = dwCurrentTime - dwFPSLastTime;	// 1000ミリ秒ちょうどより少し長いので、四捨五入して表示する
+			sprintf_s(title, "%s  FPS: %lu", TITLE, (dwFrameCount * 1000 + elapsed / 2) / elapsed);
+			SetWindowText(hWnd, title);
+
+			dwFPSLastTime = dwCurrentTime;				// FPSを測定した時刻を保存
+			dwFrameCount = 0;							// カウントをクリア
+		}
+
+		if ((dwCurrentTime - dwExecLastTime) >= FRAME_TIME[frameIndex])	// 1/60秒ごとに実行
+		{
+			// 次のフレームの予定時刻（今の時刻ではなく予定時刻から進めるので、Sleep の寝すぎでずれていかない）
+			dwExecLastTime += FRAME_TIME[frameIndex];
+			frameIndex = (frameIndex + 1) % 3;
+			if ((dwCurrentTime - dwExecLastTime) > 100) {
+				dwExecLastTime = dwCurrentTime;	// 大きく遅れたとき（ウィンドウをつかんで動かしていた など）は追いつこうとせず仕切り直す
 			}
 
-			if ((dwCurrentTime - dwExecLastTime) >= (1000 / 60))	// 1/60秒ごとに実行
-			{
-				dwExecLastTime = dwCurrentTime;	// 処理した時刻を保存
+			Update();			// 更新処理
+			Draw();				// 描画処理
 
-				Update();			// 更新処理
-				Draw();				// 描画処理
-
-				dwFrameCount++;		// 処理回数のカウントを加算
-			}
+			dwFrameCount++;		// 処理回数のカウントを加算
+		}
+		else
+		{
+			// 次のフレームまで少し休む（休まずに回り続けると、CPU を1コアまるごと使ってしまう）
+			Sleep(1);
 		}
 	} while (msg.message != WM_QUIT);
 
