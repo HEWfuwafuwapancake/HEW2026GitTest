@@ -18,6 +18,17 @@ GitHub の Organization 上の public リポジトリで、git-flow（main / dev
 - develop / main へのマージ、release / hotfix、タグ付けは **管理者だけ**（`tools/admin/`）。ユーザーが管理者かどうか分からなければ聞く。
 - 画像・モデル・音声は Git LFS（`.gitattributes`）。新しい種類の素材ファイルを入れるときは `.gitattributes` に追加する。
 
+## コードの約束
+- 授業（DX21）のひな形をもとにした DX11 基盤。構成は `docs/dev/01_DX11基盤の構成.md`。書き方はひな形に合わせる（`〇〇Initialize / Finalize / Update / Draw`）。
+- C++（`.cpp` / `.h`）は **BOM付きUTF-8**。シェーダー（`.hlsl` / `.hlsli`）は **BOMなしUTF-8**（fxc は BOM があると `X3000` で失敗する）。
+- 文字セットは **マルチバイト**（ひな形が `char` 文字列のため）。`/utf-8` オプションは付けない。サブシステムは Windows。
+- 定数バッファは `shader.h` の構造体と `shaderCommon.hlsli` の並び・番号（b0〜b4）をそろえる。
+- ファイルを足したら `.vcxproj` と `.vcxproj.filters` にも追加する。
+- ビルド確認：
+  `& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" HEW2026GitTest.vcxproj /p:Configuration=Debug /p:Platform=x64 /v:minimal /nologo`
+  （Visual Studio のエディション／パスはPCによって違う場合がある）
+
 ## ドキュメント
 - `docs/team/01_管理者向け_環境構築.md` / `02_メンバー向け_環境構築.md` / `03_ブランチ運用ルール.md` / `04_コマンド一覧.md`
+- `docs/dev/01_DX11基盤の構成.md`（プログラムの構成と、オブジェクトの足し方）
 - スクリプトの動きを変えたり、新しいスクリプトを足したりしたら、これらのドキュメント（特に `04_コマンド一覧.md`）も合わせて直す。
