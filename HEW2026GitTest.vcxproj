@@ -130,8 +130,10 @@
     <ClCompile Include="field.cpp" />
     <ClCompile Include="keyboard.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="mouse.cpp" />
     <ClCompile Include="polygon2D.cpp" />
     <ClCompile Include="shader.cpp" />
+    <ClCompile Include="water.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="camera.h" />
@@ -141,11 +143,14 @@
     <ClInclude Include="field.h" />
     <ClInclude Include="keyboard.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="mouse.h" />
     <ClInclude Include="polygon2D.h" />
     <ClInclude Include="shader.h" />
+    <ClInclude Include="water.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaderCommon.hlsli" />
+    <None Include="shaderWater.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="shaderVertex3D.hlsl">
@@ -155,6 +160,18 @@
       <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
     </FxCompile>
     <FxCompile Include="shaderPixel3D.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+      <EntryPointName>main</EntryPointName>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="shaderVertexWater.hlsl">
+      <ShaderType>Vertex</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+      <EntryPointName>main</EntryPointName>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="shaderPixelWater.hlsl">
       <ShaderType>Pixel</ShaderType>
       <ShaderModel>5.0</ShaderModel>
       <EntryPointName>main</EntryPointName>

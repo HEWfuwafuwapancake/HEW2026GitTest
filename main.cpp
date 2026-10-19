@@ -6,9 +6,11 @@
 #include "main.h"
 #include "shader.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "camera.h"
 #include "field.h"
 #include "cube.h"
+#include "water.h"
 #include "polygon2D.h"
 
 #pragma comment (lib, "winmm.lib")
@@ -134,6 +136,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		PostQuitMessage(0); // WM_QUITメッセージの送信
 		break;
 
+	case WM_INPUT: // マウスの移動量（Raw Input）
+		MouseOnRawInput(lParam);
+		return DefWindowProc(hWnd, uMsg, wParam, lParam);
+
+	case WM_ACTIVATE: // ウィンドウが選ばれた／選ばれなくなった
+		// 選ばれている間だけマウスでカメラを回す（終了確認のメッセージボックスが出たときなどは自動で解除）
+		MouseSetLock(LOWORD(wParam) != WA_INACTIVE);
+		return DefWindowProc(hWnd, uMsg, wParam, lParam);
+
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
 		{
@@ -174,12 +185,16 @@ bool Initialize(HWND hWnd)
 		return false;
 	}
 
+	//マウス初期化
+	MouseInitialize(hWnd);
+
 	//カメラ初期化
 	CameraInitialize();
 
 	//3Dオブジェクト初期化
 	FieldInitialize();
 	CubeInitialize();
+	WaterInitialize();
 
 	//2Dポリゴン初期化
 	Polygon2DInitialize();
@@ -193,10 +208,12 @@ void Finalize(void)
 	//初期化と逆の順番で終了処理をする
 	Polygon2DFinalize();
 
+	WaterFinalize();
 	CubeFinalize();
 	FieldFinalize();
 
 	CameraFinalize();
+	MouseFinalize();
 
 	//シェーダー終了処理
 	Shader_Finalize();
@@ -215,10 +232,17 @@ void Update(void)
 {
 	//入力は一番最初に更新する
 	KeyboardUpdate();
+	MouseUpdate();
+
+	//Tab でマウスのロック（カーソルを隠してカメラを回す）を切り替える
+	if (KeyboardIsTrigger(VK_TAB)) {
+		MouseSetLock(!MouseIsLocked());
+	}
 
 	CameraUpdate();
 	FieldUpdate();
 	CubeUpdate();
+	WaterUpdate();
 	Polygon2DUpdate();
 }
 
@@ -242,6 +266,7 @@ void Draw(void)
 
 	FieldDraw();
 	CubeDraw();
+	WaterDraw();	// 水は地形と立方体をレイトレーシングで映すので、それらのあとに描く
 
 	// ---- 2D描画（UI）：3Dの上に重ねるので最後に描く ----
 	SetDepthEnable(false);
