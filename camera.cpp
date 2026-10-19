@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------
 // マウス感度：マウスを1カウント動かしたときに回る角度（ラジアン）
 // 大きくすると速く回る。0.001f（ゆっくり）〜 0.005f（速い）くらいが目安
-static constexpr float MOUSE_SENSITIVITY = 0.0025f;
+static constexpr float MOUSE_SENSITIVITY = 0.00125f;
 static constexpr bool  MOUSE_INVERT_Y = false;							// true にすると上下が逆になる
 
 static constexpr float KEY_ROTATE_SPEED = XMConvertToRadians(2.0f);	// 矢印キーで1フレームに回る角度
