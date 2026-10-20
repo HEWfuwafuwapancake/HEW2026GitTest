@@ -21,14 +21,14 @@ struct MATERIAL
 	XMFLOAT4 Diffuse;		///< 拡散色（ライトが当たっている部分の色）
 	XMFLOAT4 Ambient;		///< 環境色（影の部分の色）
 	BOOL     TextureEnable;	///< テクスチャを使うか
-	float    Dummy[3];
+	float    Dummy[3];		///< 使わない（定数バッファを16バイト単位にそろえるための詰め物）
 };
 
 /// @brief 平行光源（太陽のような、一方向から当たる光）
 struct LIGHT
 {
 	BOOL     Enable;		///< ライトの計算をするか（2D描画のときは FALSE）
-	float    Dummy[3];
+	float    Dummy[3];		///< 使わない（Direction を16バイトの区切りから始めるための詰め物）
 	XMFLOAT4 Direction;		///< 光の進む向き
 	XMFLOAT4 Diffuse;		///< 光の色
 	XMFLOAT4 Ambient;		///< 環境光の色（光が当たらない面の明るさ）
