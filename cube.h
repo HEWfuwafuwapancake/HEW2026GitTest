@@ -13,6 +13,7 @@ void CubeDraw(void);
 XMMATRIX CubeGetWorldMatrix(void);
 XMFLOAT4 CubeGetColor(void);
 
-// 球（中心 center、半径 radius）が立方体と重なっていたら、center を立方体の外へ押し出す
-// 立方体の回転と大きさを含めて判定する。押し出したら true を返す
-bool CubePushOutSphere(XMFLOAT3& center, float radius);
+// カメラの当たり判定に使う（立方体の回転と大きさを含めて、箱の形そのもので判定する）
+XMFLOAT3 CubeGetPosition(void);
+bool CubeOverlapsSphere(const XMFLOAT3& center, float radius);	// 球（中心 center、半径 radius）が立方体と重なっているか
+bool CubePushOutSphere(XMFLOAT3& center, float radius);		// 重なっていたら center を立方体の外へ押し出す。押し出したら true

@@ -105,16 +105,36 @@ XMFLOAT4 CubeGetColor(void)
 	return g_Color;
 }
 
+XMFLOAT3 CubeGetPosition(void)
+{
+	return g_Position;
+}
+
+// 球の中心を立方体の「回転だけを戻した座標」に直す（原点が立方体の中心、箱は -half 〜 +half）
+// 大きさは half に入れるので、軸ごとに大きさが違っても距離を正しく測れる
+static XMVECTOR ToCubeLocal(const XMFLOAT3& center, const XMMATRIX& rotation)
+{
+	// ワールド → 立方体の座標（移動を戻してから、回転を戻す＝回転の転置を掛ける）
+	return XMVector3TransformNormal(XMLoadFloat3(&center) - XMLoadFloat3(&g_Position), XMMatrixTranspose(rotation));
+}
+
+bool CubeOverlapsSphere(const XMFLOAT3& center, float radius)
+{
+	XMMATRIX rotation = XMMatrixRotationRollPitchYaw(g_Rotation.x, g_Rotation.y, g_Rotation.z);
+	XMVECTOR half = XMVectorSet(0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f);
+	XMVECTOR local = ToCubeLocal(center, rotation);
+
+	// 箱の中で、球の中心にいちばん近い点までの距離が半径より短ければ重なっている
+	XMVECTOR closest = XMVectorClamp(local, -half, half);
+	return XMVectorGetX(XMVector3LengthSq(local - closest)) < radius * radius;
+}
+
 bool CubePushOutSphere(XMFLOAT3& center, float radius)
 {
-	// 立方体の「回転だけを戻した座標」で考える（原点が立方体の中心、箱は -half 〜 +half）
-	// 大きさは half に入れるので、軸ごとに大きさが違っても距離を正しく測れる
 	XMMATRIX rotation = XMMatrixRotationRollPitchYaw(g_Rotation.x, g_Rotation.y, g_Rotation.z);
 	XMVECTOR cubePos = XMLoadFloat3(&g_Position);
 	XMVECTOR half = XMVectorSet(0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f);
-
-	// ワールド → 立方体の座標（回転を戻す＝回転の転置を掛ける）
-	XMVECTOR local = XMVector3TransformNormal(XMLoadFloat3(&center) - cubePos, XMMatrixTranspose(rotation));
+	XMVECTOR local = ToCubeLocal(center, rotation);
 
 	// 箱の中で、球の中心にいちばん近い点
 	XMVECTOR closest = XMVectorClamp(local, -half, half);
