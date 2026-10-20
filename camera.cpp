@@ -3,6 +3,7 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "field.h"
+#include "cube.h"
 
 
 //------------------------------------------------------------------------------
@@ -17,6 +18,7 @@ static constexpr float KEY_ROTATE_SPEED = XMConvertToRadians(2.0f);	// 矢印キ
 static constexpr float MOVE_SPEED = 0.15f;							// 1フレームに進む距離
 static constexpr float RUN_MULTIPLIER = 3.0f;						// Shift を押したときの速さの倍率
 static constexpr float EYE_MIN_HEIGHT = 0.5f;						// 地面・水面からこれ以上は下がらない
+static constexpr float COLLISION_RADIUS = 0.25f;						// カメラの当たり判定を球として扱う半径
 static constexpr float WORLD_LIMIT = 48.0f;							// ワールドの端（これより外へは行けない）
 
 static constexpr float FOV = XMConvertToRadians(60.0f);				// 視野角（縦）
@@ -85,9 +87,19 @@ void CameraUpdate(void)
 	}
 	XMFLOAT3 delta;
 	XMStoreFloat3(&delta, m);
-	g_Position.x += delta.x;
-	g_Position.y += delta.y;
-	g_Position.z += delta.z;
+
+	// 軸ごとに移動を試し、立方体に当たった軸だけ止めて壁沿いに滑れるようにする
+	XMFLOAT3 next = g_Position;
+	next.x += delta.x;
+	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.x = next.x;
+
+	next = g_Position;
+	next.z += delta.z;
+	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.z = next.z;
+
+	next = g_Position;
+	next.y += delta.y;
+	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.y = next.y;
 
 	// ワールドの外に出ない
 	if (g_Position.x > WORLD_LIMIT)  g_Position.x = WORLD_LIMIT;

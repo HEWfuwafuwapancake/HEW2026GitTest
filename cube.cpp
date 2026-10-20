@@ -105,6 +105,18 @@ XMFLOAT4 CubeGetColor(void)
 	return g_Color;
 }
 
+bool CubeIntersectsSphere(XMFLOAT3 center, float radius)
+{
+	// 立方体の外接球を使う。回転しても半径は変わらない
+	float cubeRadius = XMVectorGetX(XMVector3Length(XMVectorSet(
+		0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f)));
+	float combinedRadius = cubeRadius + radius;
+	float dx = center.x - g_Position.x;
+	float dy = center.y - g_Position.y;
+	float dz = center.z - g_Position.z;
+	return dx * dx + dy * dy + dz * dz < combinedRadius * combinedRadius;
+}
+
 void CubeDraw(void)
 {
 	Shader_SetWorldMatrix(CubeGetWorldMatrix());
