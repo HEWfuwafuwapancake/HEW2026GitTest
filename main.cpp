@@ -304,4 +304,7 @@ void Draw(void)
 	Polygon2DDraw();
 
 	Present();
+
+	int d = 6 / 3(2 + 1);
+
 }
