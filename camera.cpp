@@ -31,6 +31,64 @@ static float g_Yaw;				// 左右の向き（ラジアン。0 で +Z 方向を見
 static float g_Pitch;			// 上下の向き（ラジアン。プラスで上を見る）
 
 
+// ワールドの端から出ない・地面と水面にもぐらない（水の中から見る描画には対応していないため）
+static void ClampToWorld(XMFLOAT3& p)
+{
+	if (p.x > WORLD_LIMIT)  p.x = WORLD_LIMIT;
+	if (p.x < -WORLD_LIMIT) p.x = -WORLD_LIMIT;
+	if (p.z > WORLD_LIMIT)  p.z = WORLD_LIMIT;
+	if (p.z < -WORLD_LIMIT) p.z = -WORLD_LIMIT;
+
+	float ground = FieldGetHeight(p.x, p.z);
+	if (ground < FIELD_WATER_LEVEL) ground = FIELD_WATER_LEVEL;
+	if (p.y < ground + EYE_MIN_HEIGHT) p.y = ground + EYE_MIN_HEIGHT;
+}
+
+// 横（XZ）に distance だけずらして、ワールドの制限をかけた位置
+static XMFLOAT3 ShiftXZ(XMFLOAT3 p, float dirX, float dirZ, float distance)
+{
+	p.x += dirX * distance;
+	p.z += dirZ * distance;
+	ClampToWorld(p);
+	return p;
+}
+
+// 立方体からの押し出しと、ワールドの制限（ClampToWorld）の両方を満たす位置にする
+static void ResolvePosition(XMFLOAT3& p)
+{
+	CubePushOutSphere(p, COLLISION_RADIUS);
+	ClampToWorld(p);
+	if (!CubeOverlapsSphere(p, COLLISION_RADIUS)) {
+		return;
+	}
+
+	// 押し出しを、地面・水面の制限が取り消した（傾いた立方体の底と水面にはさまれた）
+	// → 上下ではなく横（XZ）に、立方体の中心から離れる向きへずらして抜ける
+	XMFLOAT3 cube = CubeGetPosition();
+	float dirX = p.x - cube.x;
+	float dirZ = p.z - cube.z;
+	float len = sqrtf(dirX * dirX + dirZ * dirZ);
+	if (len < 0.0001f) { dirX = 0.0f; dirZ = -1.0f; len = 1.0f; }	// 真下にいるときは手前へ
+	dirX /= len;
+	dirZ /= len;
+
+	// 重ならなくなる最小の距離を探す（倍々に広げて外に出る距離を見つけてから、半分ずつ狭める）
+	// 箱と球の重なる範囲は凸な形なので、まっすぐ動けば一度出たらもう入らない
+	float lo = 0.0f;
+	float hi = COLLISION_RADIUS;
+	for (int i = 0; i < 10 && CubeOverlapsSphere(ShiftXZ(p, dirX, dirZ, hi), COLLISION_RADIUS); i++) {
+		lo = hi;
+		hi *= 2.0f;
+	}
+	for (int i = 0; i < 12; i++) {
+		float mid = (lo + hi) * 0.5f;
+		if (CubeOverlapsSphere(ShiftXZ(p, dirX, dirZ, mid), COLLISION_RADIUS)) lo = mid;
+		else hi = mid;
+	}
+	p = ShiftXZ(p, dirX, dirZ, hi);
+}
+
+
 void CameraInitialize(void)
 {
 	g_Position = { 0.0f, 4.0f, -18.0f };
@@ -88,29 +146,19 @@ void CameraUpdate(void)
 	XMFLOAT3 delta;
 	XMStoreFloat3(&delta, m);
 
-	// 軸ごとに移動を試し、立方体に当たった軸だけ止めて壁沿いに滑れるようにする
-	XMFLOAT3 next = g_Position;
-	next.x += delta.x;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.x = next.x;
+	// 動かしてから、立方体からの押し出しとワールドの制限をかける（押し出す向きは面に垂直なので、面に沿って滑る）
+	// 1回に半径より長く動くと立方体をすり抜けるおそれがあるので、半径以下ずつに分けて動かす
+	// 動いていないときも1回はかけるので、回転してきた立方体にめり込んだままにならない
+	float length = XMVectorGetX(XMVector3Length(m));
+	int steps = (int)ceilf(length / COLLISION_RADIUS);
+	if (steps < 1) steps = 1;
 
-	next = g_Position;
-	next.z += delta.z;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.z = next.z;
-
-	next = g_Position;
-	next.y += delta.y;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.y = next.y;
-
-	// ワールドの外に出ない
-	if (g_Position.x > WORLD_LIMIT)  g_Position.x = WORLD_LIMIT;
-	if (g_Position.x < -WORLD_LIMIT) g_Position.x = -WORLD_LIMIT;
-	if (g_Position.z > WORLD_LIMIT)  g_Position.z = WORLD_LIMIT;
-	if (g_Position.z < -WORLD_LIMIT) g_Position.z = -WORLD_LIMIT;
-
-	// 地面と水面にもぐらない（水の中から見る描画には対応していないため）
-	float ground = FieldGetHeight(g_Position.x, g_Position.z);
-	if (ground < FIELD_WATER_LEVEL) ground = FIELD_WATER_LEVEL;
-	if (g_Position.y < ground + EYE_MIN_HEIGHT) g_Position.y = ground + EYE_MIN_HEIGHT;
+	for (int i = 0; i < steps; i++) {
+		g_Position.x += delta.x / steps;
+		g_Position.y += delta.y / steps;
+		g_Position.z += delta.z / steps;
+		ResolvePosition(g_Position);
+	}
 }
 
 void CameraDraw(void)

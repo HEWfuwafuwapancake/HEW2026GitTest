@@ -105,16 +105,67 @@ XMFLOAT4 CubeGetColor(void)
 	return g_Color;
 }
 
-bool CubeIntersectsSphere(XMFLOAT3 center, float radius)
+XMFLOAT3 CubeGetPosition(void)
 {
-	// 立方体の外接球を使う。回転しても半径は変わらない
-	float cubeRadius = XMVectorGetX(XMVector3Length(XMVectorSet(
-		0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f)));
-	float combinedRadius = cubeRadius + radius;
-	float dx = center.x - g_Position.x;
-	float dy = center.y - g_Position.y;
-	float dz = center.z - g_Position.z;
-	return dx * dx + dy * dy + dz * dz < combinedRadius * combinedRadius;
+	return g_Position;
+}
+
+// 球の中心を立方体の「回転だけを戻した座標」に直す（原点が立方体の中心、箱は -half 〜 +half）
+// 大きさは half に入れるので、軸ごとに大きさが違っても距離を正しく測れる
+static XMVECTOR ToCubeLocal(const XMFLOAT3& center, const XMMATRIX& rotation)
+{
+	// ワールド → 立方体の座標（移動を戻してから、回転を戻す＝回転の転置を掛ける）
+	return XMVector3TransformNormal(XMLoadFloat3(&center) - XMLoadFloat3(&g_Position), XMMatrixTranspose(rotation));
+}
+
+bool CubeOverlapsSphere(const XMFLOAT3& center, float radius)
+{
+	XMMATRIX rotation = XMMatrixRotationRollPitchYaw(g_Rotation.x, g_Rotation.y, g_Rotation.z);
+	XMVECTOR half = XMVectorSet(0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f);
+	XMVECTOR local = ToCubeLocal(center, rotation);
+
+	// 箱の中で、球の中心にいちばん近い点までの距離が半径より短ければ重なっている
+	XMVECTOR closest = XMVectorClamp(local, -half, half);
+	return XMVectorGetX(XMVector3LengthSq(local - closest)) < radius * radius;
+}
+
+bool CubePushOutSphere(XMFLOAT3& center, float radius)
+{
+	XMMATRIX rotation = XMMatrixRotationRollPitchYaw(g_Rotation.x, g_Rotation.y, g_Rotation.z);
+	XMVECTOR cubePos = XMLoadFloat3(&g_Position);
+	XMVECTOR half = XMVectorSet(0.5f * g_Scale.x, 0.5f * g_Scale.y, 0.5f * g_Scale.z, 0.0f);
+	XMVECTOR local = ToCubeLocal(center, rotation);
+
+	// 箱の中で、球の中心にいちばん近い点
+	XMVECTOR closest = XMVectorClamp(local, -half, half);
+	XMVECTOR diff = local - closest;
+	float distSq = XMVectorGetX(XMVector3LengthSq(diff));
+
+	if (distSq >= radius * radius) {
+		return false;	// 重なっていない
+	}
+
+	if (distSq > 0.0f) {
+		// 中心は箱の外：いちばん近い点から、ちょうど radius だけ離れた位置まで押し出す
+		local = closest + XMVector3Normalize(diff) * radius;
+	}
+	else {
+		// 中心が箱の中にめり込んでいる：いちばん浅い面の方向へ押し出す
+		XMFLOAT3 l, h;
+		XMStoreFloat3(&l, local);
+		XMStoreFloat3(&h, half);
+		float depthX = h.x - fabsf(l.x);
+		float depthY = h.y - fabsf(l.y);
+		float depthZ = h.z - fabsf(l.z);
+		if (depthX <= depthY && depthX <= depthZ) l.x = (l.x < 0.0f ? -1.0f : 1.0f) * (h.x + radius);
+		else if (depthY <= depthZ)                l.y = (l.y < 0.0f ? -1.0f : 1.0f) * (h.y + radius);
+		else                                      l.z = (l.z < 0.0f ? -1.0f : 1.0f) * (h.z + radius);
+		local = XMLoadFloat3(&l);
+	}
+
+	// 立方体の座標 → ワールド
+	XMStoreFloat3(&center, XMVector3TransformNormal(local, rotation) + cubePos);
+	return true;
 }
 
 void CubeDraw(void)
