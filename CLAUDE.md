@@ -4,6 +4,10 @@ DirectX 11（C++ / Visual Studio 2022）で作るゲームのチーム制作リ�
 GitHub の Organization 上の public リポジトリで、git-flow（main / develop / feature / release / hotfix）で運用する。
 
 ## 進め方のルール
+- **作業を始める前に `docs/lessons.md` を読み、同じミスをしないこと。**
+  ミスをして直したときや、ユーザーに間違いを指摘されたときは、`docs/lessons.md` に「起きたこと／原因／次からどうするか」を1項目として追記する（書いた AI：Claude）。
+- Codex との相互レビュー（実装やレビューを Codex と分担する）を頼まれたときは、`docs/ai/01_Codexとの相互レビュー.md` の手順に従う。
+  頼まれていないときは、いつも通りに作業する（相互レビューを使うのは管理者だけ）。
 - ユーザーへの返答は日本語。ユーザーに示すコマンドは **PowerShell** 形式（コードブロックは `powershell`）。
 - `.ps1` に日本語を書くときは **BOM付きUTF-8** で保存する（Windows PowerShell 5.1 対策）。
 
@@ -32,4 +36,6 @@ GitHub の Organization 上の public リポジトリで、git-flow（main / dev
 ## ドキュメント
 - `docs/team/01_管理者向け_環境構築.md` / `02_メンバー向け_環境構築.md` / `03_ブランチ運用ルール.md` / `04_コマンド一覧.md`
 - `docs/dev/01_DX11基盤の構成.md`（プログラムの構成と、オブジェクトの足し方）
+- `docs/lessons.md`（AI の失敗と教訓。作業前に読む・ミスのたびに追記する。Codex と共有）
+- `docs/ai/01_Codexとの相互レビュー.md`（管理者だけが使う、Claude と Codex の相互レビューの手順。Codex への指示は `AGENTS.md`）
 - スクリプトの動きを変えたり、新しいスクリプトを足したりしたら、これらのドキュメント（特に `04_コマンド一覧.md`）も合わせて直す。
