@@ -74,7 +74,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 	HWND hWnd = CreateWindow(WINDOW_CLASS, TITLE, windowStyle,
 		CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight, nullptr, nullptr, hInstance, nullptr);
 
-
+	//kokonihenkou
 	//初期化処理（失敗したら後片付けをして終了する）
 	if (!Initialize(hWnd)) {
 		Finalize();
