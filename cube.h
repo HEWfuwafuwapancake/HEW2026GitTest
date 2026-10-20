@@ -12,3 +12,6 @@ void CubeDraw(void);
 // 水のレイトレーシングで立方体を映すために使う
 XMMATRIX CubeGetWorldMatrix(void);
 XMFLOAT4 CubeGetColor(void);
+
+// カメラの球と立方体が重なるか調べる（立方体の回転を含む保守的な判定）
+bool CubeIntersectsSphere(XMFLOAT3 center, float radius);
