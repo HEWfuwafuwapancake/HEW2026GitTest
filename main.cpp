@@ -57,6 +57,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 	wcex.hIconSm = LoadIcon(wcex.hInstance, IDI_APPLICATION);
 	RegisterClassEx(&wcex);
 
+	// これがスズキヨシアキの変更部分 v(^o^)v
+
 	// クライアント領域のサイズを持った矩形 (左からleft, top, right, bottom)
 	RECT windowRect = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
 	// ウィンドウのスタイル
