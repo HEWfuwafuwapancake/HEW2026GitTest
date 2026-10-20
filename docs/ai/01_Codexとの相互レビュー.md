@@ -48,7 +48,9 @@ git lfs pull
      PR にコメントとして残したいときは、結果を `gh pr comment <PR番号> --body-file <ファイル>` で書く
 4. 指摘には重さを付ける：**必須**（直さないとマージできない）／**推奨**（直したほうがよい）／**質問**
 5. 相手のブランチには**コミットしない**（直すのは実装した AI）
-6. 終わったら `.\tools\fetch-latest.ps1` で develop に戻る
+6. 終わったら `git switch develop` で develop に戻る
+   （PR はまだマージされていないので、`fetch-latest.ps1` では戻らない。`fetch-latest.ps1` が develop に切り替えるのはマージ済みのときだけ）
+7. PR がマージされたら、`.\tools\fetch-latest.ps1` の最後に「消してOK」と出る手元のブランチを `git branch -d <ブランチ名>` で消す
 
 ### 実装した AI（指摘を受けて）
 1. 必須の指摘を直す。推奨は直すか、直さない理由を PR に返信する
