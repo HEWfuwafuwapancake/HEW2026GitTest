@@ -88,18 +88,19 @@ void CameraUpdate(void)
 	XMFLOAT3 delta;
 	XMStoreFloat3(&delta, m);
 
-	// 軸ごとに移動を試し、立方体に当たった軸だけ止めて壁沿いに滑れるようにする
-	XMFLOAT3 next = g_Position;
-	next.x += delta.x;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.x = next.x;
+	// 動かしてから、立方体と重なっていたら外へ押し出す（押し出す向きは面に垂直なので、面に沿って滑る）
+	// 1回に半径より長く動くと立方体をすり抜けるおそれがあるので、半径以下ずつに分けて動かす
+	// 動いていないときも1回は押し出すので、回転してきた立方体にめり込んだままにならない
+	float length = XMVectorGetX(XMVector3Length(m));
+	int steps = (int)ceilf(length / COLLISION_RADIUS);
+	if (steps < 1) steps = 1;
 
-	next = g_Position;
-	next.z += delta.z;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.z = next.z;
-
-	next = g_Position;
-	next.y += delta.y;
-	if (!CubeIntersectsSphere(next, COLLISION_RADIUS)) g_Position.y = next.y;
+	for (int i = 0; i < steps; i++) {
+		g_Position.x += delta.x / steps;
+		g_Position.y += delta.y / steps;
+		g_Position.z += delta.z / steps;
+		CubePushOutSphere(g_Position, COLLISION_RADIUS);
+	}
 
 	// ワールドの外に出ない
 	if (g_Position.x > WORLD_LIMIT)  g_Position.x = WORLD_LIMIT;
