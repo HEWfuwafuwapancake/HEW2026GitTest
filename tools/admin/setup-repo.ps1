@@ -89,8 +89,11 @@ Write-Ok "$MainBranch と $DevelopBranch を GitHub に置きました。"
 
 # 既定ブランチを develop に（クローンすると develop が開き、プルリクエストも develop 向けになる）
 # マージはマージコミットだけにする（図のように枝分かれの履歴が残る）
-gh repo edit $full --default-branch $DevelopBranch --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false --delete-branch-on-merge=false --enable-wiki=false | Out-Null
-Write-Ok "既定ブランチ: $DevelopBranch / マージ方法: マージコミットのみ"
+# マージしたら GitHub 上のブランチを自動で消す（ブラウザのボタンでマージしても feature/* が残らない）
+#   ※ release / hotfix の finish は同じブランチを main と develop に2回マージするので、
+#     1回目で消されたら push し直してから2回目をマージする（admin-common.ps1 の Complete-FlowBranch）
+gh repo edit $full --default-branch $DevelopBranch --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false --delete-branch-on-merge --enable-wiki=false | Out-Null
+Write-Ok "既定ブランチ: $DevelopBranch / マージ方法: マージコミットのみ / マージしたブランチは自動で削除"
 
 # ---------------------------------------------------------------
 Write-Step "5. ブランチのルール（Rulesets）"

@@ -59,6 +59,9 @@ function Complete-FlowBranch([string]$kind) {
         Write-Ok "タグ v$version を付けました。"
     }
 
+    # リポジトリの「マージしたら自動で削除」で、1回目のマージのあと GitHub 上の $branch が消されている。
+    # 手元にはまだ残っているので、push し直してから develop へのプルリクエストを作る（消されていなければ何もしない）
+    Git-Run push -q -u origin $branch
     Merge-ByPr $branch $cfg.developBranch "$label v$version を $($cfg.developBranch) に反映" "$branch の修正を $($cfg.developBranch) にも入れます。"
 
     Git-Run fetch -q origin
